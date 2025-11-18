@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List
 from api.model_manager import ModelManager
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
     logger.info("loading stock prediction model...")
     model_manager.load_model()
     start_time = time.time()
-    logger.info(f"model loaded: version {model_manager.metadata.get_version()}")
+    logger.info(f"model loaded: version {model_manager.get_version()}")
 
     yield
 
@@ -114,3 +115,41 @@ async def predict(request: PredictionRequest):
         REQUEST_COUNT.labels(endpoint="/predict", status="error").inc()
         logger.error(f"prediction error: {str(e)}")
         raise HTTPException(500, str(e))
+    
+@app.get('/metrics')
+async def metrics():
+    # return Prometheus metrics
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
+@app.post('/reload')
+async def reload_model():
+    # reload model (after retraining!)
+    try:
+        model_manager.load_model()
+        REQUEST_COUNT.labels(endpoint="/reload", status="success").inc()
+        return {
+            "status": "success",
+            "msssage": f"Successfully reloaded model version {model_manager.get_version()}.",
+            "accuracy": model_manager.get_accuracy(),
+            "trained": model_manager.get_trained_date()
+        }
+    except Exception as e:
+        REQUEST_COUNT.labels(endpoint="/reload", status="error").inc()
+        raise HTTPException(400, str(e))
+    
+@app.get('/')
+async def root():
+    # return API info
+    return {
+        "name": "Stock Prediction API",
+        "model": model_manager.get_version(),
+        "endpoints": {
+            "predict": "/predict",
+            "reload": "/reload",
+            "health": "/health",
+            "metrics": "/metrics"
+        }
+    }
