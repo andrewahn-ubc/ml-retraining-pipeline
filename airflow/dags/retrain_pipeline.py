@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 import numpy as np
 import pickle
 import json
+import requests
 
 default_args = {
     'owner': 'andrew',
@@ -139,8 +140,22 @@ def validate_model(**context):
     print("validation passed!")
     return {"accuracy": float(accuracy)}
 
-def deploy_model(**context):
-    pass
+# rename model (which lives in a folder on the host machine), then trigger API to load the latest version
+def deploy_model(**context): 
+    model_path = Path("/opt/airflow/models")
+    
+    # atomic swap by renaming files (important to swap models exactly like this for atomicity!!!)
+    (model_path / "model_new.pkl").rename(model_path / "model.pkl")
+    (model_path / "metadata_new.json").rename(model_path / "metadata.json")
+
+    # trigger api reload
+    try:
+        response = requests.post("http://ml-api:8000/reload", timeout=5)
+        print(f"API reload response: {response.json()}")
+    except Exception as e:
+        print(f"could not reload model using API. Error mesage: {e}")
+
+    return {"status": "deployed"}
 
 task_load = PythonOperator(
     task_id = "load_data",
