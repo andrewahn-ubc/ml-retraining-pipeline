@@ -12,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 import numpy as np
 import pickle
+import json
 
 default_args = {
     'owner': 'andrew',
@@ -104,6 +105,39 @@ def train_model(**context):
 def validate_model(**context):
     data_path = Path("/opt/airflow/data")
     model_path = Path("/opt/airflow/models")
+
+    # load data and model
+    X_test = np.load(data_path / "X_test.npy")
+    y_test = np.load(data_path / "y_test.npy")
+    with open(model_path / "model_new.pkl") as f:
+        model_package = pickle.load(f)
+    model = model_package["model"]
+    scaler = model_package["scaler"]
+
+    # compute accuracy on test set 
+    X_test_standardized = scaler.transform(X_test) # standardize test data using mean and std from train data! (golden rule)
+    y_pred = model.predict(X_test_standardized)
+    accuracy = (y_pred == y_test)/len(y_test)
+
+    print(f"Model Accuracy: {accuracy*100}%")
+
+    threshold = 0.85
+    if accuracy < threshold:
+        raise ValueError(f"Model accuracy was below threshold of {threshold*100}%; model not good enough for deployment")
+
+    # make some metadata and save it
+    metadata = {
+        "version": datetime.now().strftime("%Y%m%d_%H%M%S"),
+        "accuracy": float(accuracy),
+        "trained_at": datetime.now().isoformat(),
+        "samples_trained": len(np.load(data_path / "X_train.npy")),
+        "ticker": "SPY"
+    }    
+    with open(model_path / "metadata_new.json", "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    print("validation passed!")
+    return {"accuracy": float(accuracy)}
 
 def deploy_model(**context):
     pass
