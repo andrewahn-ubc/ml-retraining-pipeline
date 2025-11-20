@@ -102,7 +102,8 @@ def train_model(**context):
     return {"status": "trained"}
 
 def validate_model(**context):
-    pass
+    data_path = Path("/opt/airflow/data")
+    model_path = Path("/opt/airflow/models")
 
 def deploy_model(**context):
     pass
